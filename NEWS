@@ -1,6 +1,6 @@
 ltmle 1.3-0-9001
 ===========
-* variance.method = "tmle" and "iptw" now work with non-binary outcomes in ltmle and ltmleMSM. Previously these outcomes silently fell back to variance.method = "ic". At the final Y node, the conditional variance of Y is estimated as E[Y^2 | past] - Q^2, bounded to [0, Q(1 - Q)], with E[Y^2 | past] fit by glm using Qform. Because the default is variance.method = "tmle", non-binary outcomes now get the robust variance by default: run time is longer and standard errors may be larger. Binary-outcome results are unchanged.
+* variance.method = "tmle" and "iptw" now work with non-binary outcomes in ltmle and ltmleMSM. Previously these outcomes silently fell back to variance.method = "ic". At the final Y node, the conditional variance of Y is estimated as E[Y^2 | past] - Q^2, bounded to [0, Q(1 - Q)] on the [0, 1] scale that Y is transformed to, with E[Y^2 | past] fit by glm using Qform. Because the default is variance.method = "tmle", non-binary outcomes now get the robust variance by default: run time is longer and standard errors may be larger. Binary-outcome results are unchanged.
 
 ltmle 1.3-0
 ===========
