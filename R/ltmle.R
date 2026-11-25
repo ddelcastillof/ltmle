@@ -858,7 +858,7 @@ EstimateVariance <- function(inputs, nodes, combined.summary.measures, regimes.w
     var.Y <- rep(0, n) #rows that are not alive have variance 0
     if (!any(alive)) return(var.Y)
     Y2.data <- inputs$data[alive & uncensored, 1:cur.node, drop=FALSE]
-    Y2.data[, cur.node] <- Y2.data[, cur.node]^2
+    Y2.data[, cur.node] <- inputs$data[alive & uncensored, max(nodes$Y)]^2 #final Y; cur.node can be the first (L) node of the last L/Y block
     names(Y2.data)[cur.node] <- "Q.kplus1" #to match with Qform
     m <- ltmle.glm(formula(inputs$Qform[LYnode.index]), family=quasibinomial(), data=Y2.data, weights=NULL)
     newdata <- SetA(data=inputs$data[alive, 1:cur.node, drop=FALSE], regimes=inputs$regimes[alive, , d1, drop=FALSE], Anodes=nodes$A, cur.node=cur.node)

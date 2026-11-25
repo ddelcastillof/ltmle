@@ -67,6 +67,14 @@ test_that("warning message prints when variance estimate ratio > 100", {
   expect_warning(print(summary(ltmle(data=data, Anodes="A", Ynodes="Y", abar = 1, estimate.time=FALSE, gbounds = c(0, 1)))), "When this ratio is greater than 100, both variance estimates are less likely to be accurate.")
 })
 
+#checks the robust variance (tmle, iptw) is present, finite and non-negative
+ExpectRobustVariance <- function(r) {
+  expect_gt(length(r$variance.estimate), 0) #NULL or numeric(0) means variance.method was switched to "ic"
+  v <- as.matrix(r$variance.estimate)
+  expect_true(all(is.finite(v)))
+  expect_true(all(diag(v) >= 0))
+}
+
 test_that("Robust variance is computed for non-binary outcomes", {
   n <- 500
   W1 <- rnorm(n)
@@ -85,18 +93,12 @@ test_that("Robust variance is computed for non-binary outcomes", {
   summary.measures <- array(1:0, dim=c(2, 1, 1))
   colnames(summary.measures) <- "A"
   rules <- list(function(row) c(1, 1), function(row) c(as.numeric(row$W1 > 0), 1)) #regimes overlap when W1 > 0, so treatment is not static
-  expect_robust_variance <- function(r) {
-    expect_false(is.null(r$variance.estimate)) #NULL means variance.method was switched to "ic"
-    v <- as.matrix(r$variance.estimate)
-    expect_true(all(is.finite(v)))
-    expect_true(all(diag(v) >= 0))
-  }
   for (variance.method in c("tmle", "iptw")) {
     args <- c(list(data=data, estimate.time=FALSE, survivalOutcome=FALSE, variance.method=variance.method), nodes)
-    expect_robust_variance(do.call(ltmle, c(args, list(abar=c(1, 1)))))
-    expect_robust_variance(do.call(ltmle, c(args, list(rule=rules))))
-    expect_robust_variance(do.call(ltmle, c(args, list(abar=c(1, 1), observation.weights=runif(n, 0.5, 2)))))
-    expect_robust_variance(do.call(ltmleMSM, c(args, list(regimes=regimes, summary.measures=summary.measures, working.msm="Y ~ W1 + W2 + A", final.Ynodes="Y2"))))
+    ExpectRobustVariance(do.call(ltmle, c(args, list(abar=c(1, 1)))))
+    ExpectRobustVariance(do.call(ltmle, c(args, list(rule=rules))))
+    ExpectRobustVariance(do.call(ltmle, c(args, list(abar=c(1, 1), observation.weights=runif(n, 0.5, 2)))))
+    ExpectRobustVariance(do.call(ltmleMSM, c(args, list(regimes=regimes, summary.measures=summary.measures, working.msm="Y ~ W1 + W2 + A", final.Ynodes="Y2"))))
   }
 })
 
@@ -146,4 +148,45 @@ test_that("Robust variance is finite and non-negative when a non-binary outcome 
 test_that("TMLE based variance estimate > IC based variance estimate under positivity, non-binary outcome", {
   skip_on_cran()
   ExpectRobustStdDevUnderPositivity(function(n) runif(n))
+})
+
+test_that("Final-node variance uses the final Y when the last L and Y nodes form a block", {
+  n <- 500
+  W <- rnorm(n)
+  A <- rexpit(W)
+  L <- rnorm(n) + A #no A/C node between L and Y
+  Y <- plogis(W + L + A + rnorm(n))
+  for (variance.method in c("tmle", "iptw")) {
+    r.block <- ltmle(data.frame(W, A, L, Y), Anodes="A", Lnodes="L", Ynodes="Y", abar=1, estimate.time=FALSE, variance.method=variance.method)
+    r.noL <- ltmle(data.frame(W, A, Y), Anodes="A", Ynodes="Y", abar=1, estimate.time=FALSE, variance.method=variance.method)
+    expect_equal(r.block$variance.estimate, r.noL$variance.estimate) #L is in no Q or g model
+  }
+  A1 <- rexpit(W)
+  L1 <- rnorm(n) + A1
+  A2 <- rexpit(W + L1)
+  L2 <- rnorm(n) + A2 #no A/C node between L2 and Y, so the last LY node is L2, not Y
+  Y <- 10 * plogis(W + L1 + A1 + A2 + rnorm(n))
+  for (variance.method in c("tmle", "iptw")) {
+    r.block <- ltmle(data.frame(W, A1, L1, A2, L2, Y), Anodes=c("A1", "A2"), Lnodes=c("L1", "L2"), Ynodes="Y", abar=c(1, 1), estimate.time=FALSE, variance.method=variance.method)
+    r.noL2 <- ltmle(data.frame(W, A1, L1, A2, Y), Anodes=c("A1", "A2"), Lnodes="L1", Ynodes="Y", abar=c(1, 1), estimate.time=FALSE, variance.method=variance.method)
+    expect_equal(r.block$variance.estimate, r.noL2$variance.estimate) #L2 is in no Q or g model
+  }
+})
+
+test_that("Robust variance is computed for ltmleMSM with two final Ynodes when L1 and Y1 form a block", {
+  n <- 500
+  W <- rnorm(n)
+  A1 <- rexpit(W)
+  L1 <- rnorm(n) + A1 #no A/C node between L1 and Y1
+  Y1 <- plogis(W + L1 + A1 + rnorm(n))
+  A2 <- rexpit(W + A1)
+  Y2 <- plogis(W + A1 + A2 + rnorm(n))
+  data <- data.frame(W, A1, L1, Y1, A2, Y2)
+  regimes <- list(function(row) c(1, 1), function(row) c(0, 0))
+  summary.measures <- array(c(1, 0, 1, 0, 1, 1, 2, 2), dim=c(2, 2, 2)) #regimes x measures x final.Ynodes
+  colnames(summary.measures) <- c("A", "time")
+  for (variance.method in c("tmle", "iptw")) {
+    r <- ltmleMSM(data=data, Anodes=c("A1", "A2"), Lnodes="L1", Ynodes=c("Y1", "Y2"), survivalOutcome=FALSE, regimes=regimes, summary.measures=summary.measures, final.Ynodes=c("Y1", "Y2"), working.msm="Y ~ A + time", estimate.time=FALSE, variance.method=variance.method)
+    ExpectRobustVariance(r)
+  }
 })
