@@ -215,7 +215,10 @@
 #' anti-conservative if there are positivity violations or rare outcomes. "tmle" is
 #' slowest but most robust if there are positivity violations or rare outcomes.
 #' "iptw" is a compromise between speed and robustness.
-#' variance.method="tmle" or "iptw" are not yet available with non-binary outcomes,
+#' For non-binary outcomes, the conditional variance of the final Y node is
+#' estimated as E[Y^2 | past] - Q^2, bounded to [0, Q(1 - Q)], where Q is the
+#' targeted estimate of E[Y | past] and E[Y^2 | past] is fit by glm using \code{Qform}.
+#' variance.method="tmle" or "iptw" are not yet available with
 #' gcomp=TRUE, stratify=TRUE, or deterministic.Q.function.
 #' @param id Household or subject identifiers. Vector of length n or \code{NULL}.
 #' Integer, factor, or character recommended, but any type that can be coerced
