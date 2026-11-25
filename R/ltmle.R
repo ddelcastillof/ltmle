@@ -630,7 +630,6 @@ MainCalcs <- function(inputs) {
 }
 
 VarianceAvailableWarning <- function(inputs) {
-  if (!inputs$binaryOutcome) return("Robust variance estimate is not currently available with non binary outcomes")
   if (!is.null(inputs$deterministic.Q.function)) return("Robust variance estimate is not currently available with deterministic.Q.function")
   if (inputs$gcomp) return("Robust variance estimate is not currently available with gcomp")
   if (inputs$stratify) return("Robust variance estimate is not currently available with stratify=TRUE")
@@ -850,6 +849,22 @@ EstimateVariance <- function(inputs, nodes, combined.summary.measures, regimes.w
     return(TRUE)
   }
 
+  #Var(Y | past, A = d1) at the final node for non-binary Y: E[Y^2 | past] - Qstar^2
+  #Y is in [0, 1], so Var(Y | past) is in [0, Qstar(1 - Qstar)]
+  FinalNodeVariance <- function(d1) {
+    var.Y <- rep(0, n) #rows that are not alive have variance 0
+    if (!any(alive)) return(var.Y)
+    Y2.data <- inputs$data[alive & uncensored, 1:cur.node, drop=FALSE]
+    Y2.data[, cur.node] <- Y2.data[, cur.node]^2
+    names(Y2.data)[cur.node] <- "Q.kplus1" #to match with Qform
+    m <- ltmle.glm(formula(inputs$Qform[LYnode.index]), family=quasibinomial(), data=Y2.data, weights=NULL)
+    newdata <- SetA(data=inputs$data[alive, 1:cur.node, drop=FALSE], regimes=inputs$regimes[alive, , d1, drop=FALSE], Anodes=nodes$A, cur.node=cur.node)
+    SuppressGivenWarnings(EY2 <- predict(m, newdata=newdata, type="response"), "prediction from a rank-deficient fit may be misleading")
+    Q <- Qstar[alive, d1]
+    var.Y[alive] <- pmin(pmax(EY2 - Q^2, 0), Q * (1 - Q))
+    return(var.Y)
+  }
+
   num.regimes <- dim(inputs$regimes)[3]
   num.betas <- ncol(combined.summary.measures)
   n <- nrow(inputs$data)
@@ -878,9 +893,14 @@ EstimateVariance <- function(inputs, nodes, combined.summary.measures, regimes.w
     } else {
       d2.regimes <- regimes.with.positive.weight #need all elements
     }
+    if (is.last.LYnode && !inputs$binaryOutcome) var.Y.d1 <- FinalNodeVariance(d1)
     for (d2 in d2.regimes) {
       if (is.last.LYnode) {
-        Sigma[, d1, d2] <- Qstar[, d1] * (1 - Qstar[, d1])
+        if (inputs$binaryOutcome) {
+          Sigma[, d1, d2] <- Qstar[, d1] * (1 - Qstar[, d1])
+        } else {
+          Sigma[, d1, d2] <- var.Y.d1
+        }
       } else {
         if (any(alive)) { #if none alive, skip this to avoid warnings on range
           resid.sq <- (Qstar.kplus1[alive, d1] - Qstar[alive, d1]) * (Qstar.kplus1[alive, d2] - Qstar[alive, d2])
