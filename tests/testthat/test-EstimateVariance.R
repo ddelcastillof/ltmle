@@ -1,14 +1,14 @@
 context("Test variance estimation")
 
-test_that("TMLE based variance estimate > IC based variance estimate under positivity",{
-  skip_on_cran()
+#checks robust sd (tmle, iptw) is >= ic sd, and larger for tmle, under positivity violation
+ExpectRobustStdDevUnderPositivity <- function(MakeY) {
   niter <- 40
   std.dev.ratio.tmle <- std.dev.ratio.iptw <- numeric(niter)
   for (i in 1:niter) {
     n <- 1000
     W <- rnorm(n)
     A <- rbinom(n, 1, plogis(5*W))
-    Y <- rbinom(n, 1, 0.5)
+    Y <- MakeY(n)
     expect_warning({
       r.var.tmle <- ltmle(data.frame(W, A, Y), Anodes="A", Ynodes="Y", abar = 1, estimate.time=FALSE)
       r.var.ic <- ltmle(data.frame(W, A, Y), Anodes="A", Ynodes="Y", abar = 1, estimate.time=FALSE, variance.method="ic")
@@ -21,6 +21,11 @@ test_that("TMLE based variance estimate > IC based variance estimate under posit
   expect_true(mean(std.dev.ratio.tmle) > mean(std.dev.ratio.iptw))
   expect_true(min(std.dev.ratio.iptw) >= 1)
   expect_true(min(std.dev.ratio.tmle) >= 1)
+}
+
+test_that("TMLE based variance estimate > IC based variance estimate under positivity",{
+  skip_on_cran()
+  ExpectRobustStdDevUnderPositivity(function(n) rbinom(n, 1, 0.5))
 })
 
 test_that("All variance estimation methods run", {
@@ -61,6 +66,7 @@ test_that("warning message prints when variance estimate ratio > 100", {
   data <- data.frame(W, A, Y)
   expect_warning(print(summary(ltmle(data=data, Anodes="A", Ynodes="Y", abar = 1, estimate.time=FALSE, gbounds = c(0, 1)))), "When this ratio is greater than 100, both variance estimates are less likely to be accurate.")
 })
+
 test_that("Robust variance is computed for non-binary outcomes", {
   n <- 500
   W1 <- rnorm(n)
@@ -135,4 +141,9 @@ test_that("Robust variance is finite and non-negative when a non-binary outcome 
     expect_true(is.finite(r$variance.estimate))
     expect_gte(r$variance.estimate, 0)
   }
+})
+
+test_that("TMLE based variance estimate > IC based variance estimate under positivity, non-binary outcome", {
+  skip_on_cran()
+  ExpectRobustStdDevUnderPositivity(function(n) runif(n))
 })
